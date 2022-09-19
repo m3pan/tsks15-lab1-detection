@@ -203,34 +203,34 @@ def monte_carlo_simulation():
     success_list = []
     SNR_DB_list = []
     classification_sum = 0
-    sim_nr = 5  # the number of simulations
+    sim_nr = 10  # the number of simulations
 
-    for SNR_DB in range(-50, -10, 5):
-
+    for SNR_DB in range(-50, 100, 5):
         melodies, ids, mismatches = sg.generate_random_melodies(sim_nr, SNR_DB, single_or_three_tone)
-
-        for melody_index in range(len(melodies)):
+        for melody_index in range(sim_nr):
             if classifier == 1:
                 c_id, c_mismatch = clsfier.single_tone_classifier(melodies[melody_index])
-                if c_id == idx and c_mismatch == mismatch:
+                if c_id == ids[melody_index] and c_mismatch == mismatches[melody_index]:
                     classification_sum += 1 / sim_nr
 
             elif classifier == 3:
                 c_id, c_mismatch = clsfier.three_tone_classifier(melodies[melody_index])
-                if c_id == idx and c_mismatch == mismatch:
+                if c_id == ids[melody_index] and c_mismatch == mismatches[melody_index]:
                     classification_sum += 1 / sim_nr
 
         SNR_DB_list.append(SNR_DB)
         success_list.append(classification_sum)
+        classification_sum = 0
 
-        plt.figure()
-        plt.plot(SNR_DB_list, success_list)
-        # Show/save figure as desired.
-        plt.show()
+
+    plt.figure()
+    plt.plot(SNR_DB_list, success_list)
+    # Show/save figure as desired.
+    plt.show()
 
 
 if __name__ == '__main__':
-    sg = SignalGenerator()
+    """sg = SignalGenerator()
     # generate a random melody, with SNR 100 dB, and 3 tones
     melody, idx, mismatch = sg.generate_random_melody(100, 1)
     nr_samples = len(melody)
@@ -246,8 +246,8 @@ if __name__ == '__main__':
     print("Vi gissar på att det är en pitch mismatch på ", classified_mismatch)
     print('')
     print("Rätt melodi: ", classified_id)
-    print("Rätt mismatch: ", classified_mismatch)
-    #monte_carlo_simulation()
+    print("Rätt mismatch: ", classified_mismatch)"""
+    monte_carlo_simulation()
 """
     sg = SignalGenerator()
     # generate a random melody, with SNR 100 dB, and 3 tones
