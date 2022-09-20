@@ -6,6 +6,7 @@ import scipy.io.wavfile as wavfile
 import numpy as np
 import typing
 from typing import Tuple, Union, Any
+from tqdm import tqdm
 
 from SignalGenerator import SignalGenerator
 from tsks15audio import save_wav
@@ -66,7 +67,7 @@ class Classifier:
         # for k in range(self.nr_tone_samples):
         F = [self.melodies_mismatch1, self.melodies_mismatch2]
 
-        H = np.empty((20, 12, self.nr_tone_samples, 2))
+        H = np.empty((20, 12, self.nr_tone_samples_div, 2))
 
         # Plocka frekvensen för varje element i H:
         alpha = 0
@@ -79,7 +80,7 @@ class Classifier:
                 for f_nj in m:  # 12 toner i en melodi
                     H_nj = np.array([1, 0])
                     # Nu har du frekvensen f_nj
-                    for k in range(self.nr_tone_samples):
+                    for k in range(self.nr_tone_samples_div):
                         new_row = np.array([np.cos(2 * np.pi * f_nj / 8820 * k), np.sin(2 * np.pi * f_nj / 8820 * k)])
                         H_nj = np.vstack([H_nj, new_row])
                     H_nj = np.delete(H_nj, 0, axis=0)
@@ -96,7 +97,7 @@ class Classifier:
         # for k in range(self.nr_tone_samples):
         F = [self.melodies_mismatch1, self.melodies_mismatch2]
 
-        H = np.empty((20, 12, self.nr_tone_samples, 6))
+        H = np.empty((20, 12, self.nr_tone_samples_div, 6))
 
         # Plocka frekvensen för varje element i H:
         alpha = 0
@@ -109,7 +110,7 @@ class Classifier:
                 for f_nj in m:  # 12 toner i en melodi
                     H_nj = np.array([1, 0, 1, 0, 1, 0])
                     # Nu har du frekvensen f_nj
-                    for k in range(self.nr_tone_samples):
+                    for k in range(self.nr_tone_samples_div):
                         new_row = np.array([np.cos(2 * np.pi * f_nj / 8820 * k), np.sin(2 * np.pi * f_nj / 8820 * k),
                                             np.cos(6 * np.pi * f_nj / 8820 * k), np.cos(6 * np.pi * f_nj / 8820 * k),
                                             np.cos(10 * np.pi * f_nj / 8820 * k), np.cos(10 * np.pi * f_nj / 8820 * k)])
@@ -126,7 +127,7 @@ class Classifier:
         y = []
 
         for n in range(12):
-            y.append(self.melody[n * self.nr_tone_samples:(n + 1) * self.nr_tone_samples])
+            y.append(self.melody[n * self.nr_tone_samples:(n * self.nr_tone_samples + self.nr_tone_samples_div)])
             n += 1
         return y
 
@@ -135,10 +136,11 @@ class Classifier:
         :return: our hypothesis on melody and pitch mismatch
         """
         self.melody = melody
+
         nr_samples = len(melody)
         tone = melody[:int(nr_samples / 12)]  # alla toner lika långa => längden på varje ton fås här
-
-        self.nr_tone_samples = len(tone)
+        self.nr_tone_samples = int(len(tone))
+        self.nr_tone_samples_div = int(len(tone)/10)
         self.y = self.setup_y_n()
         self.H = self.single_tone_observation_matrix()
 
@@ -163,11 +165,14 @@ class Classifier:
         return cl_id, cl_mism
 
     def three_tone_classifier(self, melody):
+
         self.melody = melody
+
+        # determines the amount of samples
         nr_samples = len(melody)
         tone = melody[:int(nr_samples / 12)]  # alla toner lika långa => längden på varje ton fås här
-
-        self.nr_tone_samples = len(tone)
+        self.nr_tone_samples = int(len(tone))
+        self.nr_tone_samples_div = int(len(tone)/10)
         self.H = self.three_tone_observation_matrix()
         self.y = self.setup_y_n()
 
@@ -195,60 +200,87 @@ class Classifier:
 def monte_carlo_simulation():
     """Determines which classifier that works the best. Plot the misclassification as function of the SNR.
     The interesting SNR range is between -50 dB and -10 dB."""
-    sg = SignalGenerator()  # todo: see if you should generate a new signal generator for each SNR_DB?
+    sg = SignalGenerator()
     clsfier = Classifier()
 
-    classifier = 1  # single-tone classifier or three-tone classifier
     single_or_three_tone = 1  # single-tone melody or three-tone melody
-    success_list = []
-    SNR_DB_list = []
-    classification_sum = 0
-    sim_nr = 10  # the number of simulations
 
-    for SNR_DB in range(-50, 100, 5):
-        melodies, ids, mismatches = sg.generate_random_melodies(sim_nr, SNR_DB, single_or_three_tone)
-        for melody_index in range(sim_nr):
-            if classifier == 1:
-                c_id, c_mismatch = clsfier.single_tone_classifier(melodies[melody_index])
-                if c_id == ids[melody_index] and c_mismatch == mismatches[melody_index]:
-                    classification_sum += 1 / sim_nr
+    sim_nr = 5  # the number of simulations
+    c_id= -1
+    c_mismatch = -1
+    nr_of_notes_gen = [1, 3, 1, 3]
+    nr_of_notes_cls = [1, 1, 3, 3]
 
-            elif classifier == 3:
-                c_id, c_mismatch = clsfier.three_tone_classifier(melodies[melody_index])
-                if c_id == ids[melody_index] and c_mismatch == mismatches[melody_index]:
-                    classification_sum += 1 / sim_nr
-
-        SNR_DB_list.append(SNR_DB)
-        success_list.append(classification_sum)
+    for run in range(4):
+        success_list = []
+        SNR_DB_list = []
         classification_sum = 0
+        for SNR_DB in tqdm(range(-50, 0, 10)):
+            melodies, ids, mismatches = sg.generate_random_melodies(sim_nr, SNR_DB, nr_of_notes_gen[run])
+            for melody_index in range(sim_nr):
+                if nr_of_notes_cls[run] == 1:
+                    c_id, c_mismatch = clsfier.single_tone_classifier(np.transpose(melodies)[melody_index])
+                elif nr_of_notes_cls[run] == 3:
+                    c_id, c_mismatch = clsfier.three_tone_classifier(np.transpose(melodies)[melody_index])
+
+                if c_id != ids[melody_index] or c_mismatch != mismatches[melody_index]:
+                    classification_sum += 1 / sim_nr
+
+            SNR_DB_list.append(SNR_DB)
+            success_list.append(classification_sum)
+            classification_sum = 0
+
+        plt.figure()
+        plt.plot(SNR_DB_list, success_list)
+        if run == 0:
+            plt.title('Single Tone melody with a single-tone classifier')
+            img_name = 'single_tone_single_detector'
+        elif run == 1:
+            plt.title('Three Tone melody with a single-tone classifier')
+            img_name = 'three_tone_single_detector'
+        elif run == 2:
+            plt.title('Single Tone melody with a three-tone classifier')
+            img_name = 'single_tone_three_detector'
+        elif run == 3:
+            plt.title('Three Tone melody with a three-tone classifier')
+            img_name = 'three_tone_three_detector'
+
+        plt.xlabel('SNR')
+        plt.ylabel('Misclassification')
+        # Show/save figure as desired.
+        plt.savefig(img_name)
+        plt.show()
 
 
-    plt.figure()
-    plt.plot(SNR_DB_list, success_list)
-    # Show/save figure as desired.
-    plt.show()
+
 
 
 if __name__ == '__main__':
     """sg = SignalGenerator()
     # generate a random melody, with SNR 100 dB, and 3 tones
-    melody, idx, mismatch = sg.generate_random_melody(100, 1)
-    nr_samples = len(melody)
-    nr_tones = 12  # all melodies have 12 tones
-    tone = melody[:int(nr_samples / nr_tones)]  # alla toner lika långa => längden på varje ton fås här
-    nr_tone_samples = len(tone)
+    correct = 0
+    for i in range(20):
+        melody, idx, mismatch = sg.generate_random_melody(100, 1)
+        # nr_samples = len(melody)
+        # nr_tones = 12  # all melodies have 12 tones
+        # tone = melody[:int(nr_samples / nr_tones)]  # alla toner lika långa => längden på varje ton fås här
+        # nr_tone_samples = len(tone)/10
 
-    classifier1 = Classifier()
-    classified_id, classified_mismatch = classifier1.single_tone_classifier(melody)
+        classifier1 = Classifier()
+        classified_id, classified_mismatch = classifier1.single_tone_classifier(melody)
+        if classified_id == idx and classified_mismatch == mismatch:
+            correct += 1
+
+    print('antal rätt:', correct)"""
     # classified_id, classified_mismatch = classifier1.three_tone_classifier()
 
-    print("Vi gissar på att det är melodi nr ", classified_id)
-    print("Vi gissar på att det är en pitch mismatch på ", classified_mismatch)
-    print('')
-    print("Rätt melodi: ", classified_id)
-    print("Rätt mismatch: ", classified_mismatch)"""
+    # print("Vi gissar på att det är melodi nr ", classified_id)
+    # print("Vi gissar på att det är en pitch mismatch på ", classified_mismatch)
+    # print('')
+    # print("Rätt melodi: ", classified_id)
+    # print("Rätt mismatch: ", classified_mismatch)
     monte_carlo_simulation()
-"""
+    """
     sg = SignalGenerator()
     # generate a random melody, with SNR 100 dB, and 3 tones
     melodies, ids, mismatches = sg.generate_random_melodies(5, 100)
